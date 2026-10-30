@@ -1955,44 +1955,74 @@ public partial class PageInstanceCompResource : IRefreshable
         DeleteModsCore(list, isShiftPressed);
     }
 
-    // 后台内嵌（Jar-in-Jar）解析未完成时，级联反查可能遗漏内嵌依赖，禁用/删除前提示确认
-    private bool _ConfirmCascadeReady()
+private bool _ConfirmCascadeReady()
+{
+    if (currentCompType != ModComp.CompType.Mod ||
+        ModLocalComp.CompJijResolved)
+        return true;
+
+    if (ModMain.MyMsgBox(
+        Lang.Text("Instance.Resource.Mod.JarInJar.ParsePending.Message"),
+        Lang.Text("Instance.Resource.Mod.JarInJar.ParsePending.Title"),
+        Lang.Text("Common.Action.Continue"),
+        Lang.Text("Common.Action.Cancel"),
+        isWarn: true) != 1)
+        return false;
+
+    var output = ModLocalComp.compResourceListLoader.output;
+    if (output is null)
+        return false;
+
+    var completed = true;
+
+    try
     {
-        if (currentCompType != ModComp.CompType.Mod || ModLocalComp.CompJijResolved) return true;
-        if (ModMain.MyMsgBox(
-            Lang.Text("Instance.Resource.Mod.JarInJar.ParsePending.Message"),
-            Lang.Text("Instance.Resource.Mod.JarInJar.ParsePending.Title"),
-            Lang.Text("Common.Action.Continue"), Lang.Text("Common.Action.Cancel"), isWarn: true) != 1)
-            return false;
+        ModJarInJarCache.UseInstance(
+            PageInstanceLeft.McInstance?.PathInstance);
 
-        // “继续”表示先同步补齐整份列表，再重新构建级联索引；不能在残缺 output 上直接计算 affected。
-        var output = ModLocalComp.compResourceListLoader.output;
-        if (output is null) return false;
-        var completed = true;
-        try
+        ModLocalComp.JijScanContext =
+            new ModJarInJar.ScanContext();
+
+        foreach (var mod in output.Where(
+            m => !m.IsFolder && m.JijPending))
         {
-            ModJarInJarCache.UseInstance(PageInstanceLeft.McInstance?.PathInstance);
-            ModLocalComp.JijScanContext = new ModJarInJar.ScanContext();
-            foreach (var mod in output.Where(m => !m.IsFolder && m.JijPending))
-                completed &= mod.ResolveJijNow();
-            if (completed)
-            {
-                ModJarInJarCache.Prune(output.Where(m => !m.IsFolder).Select(m => m.path));
-                ModJarInJarCache.Flush();
-            }
-        }
-        finally
-        {
-            ModLocalComp.JijScanContext = null;
-            ModJarInJarCache.UseInstance(null);
+            if (!mod.ResolveJijNow())
+                completed = false;
         }
 
-        ModLocalComp.CompJijResolved = completed;
-        ModMain.frmInstanceModJarInJar?.OnJijResolved();
-        if (!completed)
-            HintService.Hint(Lang.Text("Instance.Resource.Ed.ToggleFailed"), HintType.Error);
-        return completed;
+        if (completed)
+        {
+            ModJarInJarCache.Prune(
+                output.Where(m => !m.IsFolder)
+                    .Select(m => m.path));
+
+            ModJarInJarCache.Flush();
+        }
     }
+    finally
+    {
+        ModLocalComp.JijScanContext = null;
+        ModJarInJarCache.UseInstance(null);
+    }
+
+    ModLocalComp.CompJijResolved = completed;
+
+    ModMain.frmInstanceModJarInJar?.OnJijResolved();
+
+    if (!completed)
+    {
+        return ModMain.MyMsgBox(
+            "部分模组的内嵌依赖解析未完成，无法保证依赖关系检测完整。\n\n" +
+            "继续操作可能导致其他模组缺少依赖。\n\n" +
+            "是否仍要继续？",
+            "内嵌模组解析不完整",
+            "仍要继续",
+            "取消",
+            isWarn: true) == 1;
+    }
+
+    return true;
+}
 
     private List<ModLocalComp.LocalCompFile> _JijFindAffected(List<ModLocalComp.LocalCompFile> targets)
     {
@@ -2046,9 +2076,9 @@ public partial class PageInstanceCompResource : IRefreshable
                 }
                 if (!resolved)
                 {
-                    HintService.Hint(Lang.Text("Instance.Resource.Ed.ToggleFailed"), HintType.Error);
-                    isSuccessful = false;
-                    continue;
+                    ModBase.Log(
+                        $"[Mod] 内嵌依赖解析未完成，继续执行文件状态切换：{modEntity.path}",
+                        ModBase.LogLevel.Debug);
                 }
             }
             string newPath = null;
