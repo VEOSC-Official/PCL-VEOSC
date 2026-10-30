@@ -1,0 +1,38 @@
+name: .NET 10 Build and Test
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 检出代码
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 2. 安装 .NET 10 SDK
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    # 3. 恢复依赖项（可选，但推荐，有助于提高构建速度）
+    - name: Restore dependencies
+      run: dotnet restore PCL.Shion.slnx
+
+    # 4. 执行构建
+    - name: Build project
+      run: dotnet build PCL.Shion.slnx -c Release --no-restore
+
+    # 5. 运行 Core 测试
+    - name: Run Core Tests
+      run: dotnet test PCL.Shion.Core.Test/PCL.Shion.Core.Test.csproj -c Release --no-build
+
+    # 6. 运行主测试
+    - name: Run Main Tests
+      run: dotnet test PCL.Shion.Test/PCL.Shion.Test.csproj -c Release --no-build
