@@ -6,7 +6,7 @@ on:
 jobs:
   build-and-publish:
     name: Build & Pack VEOSC
-    runs-on: windows-latest # 改用 Windows 环境，完美支持 PCL 的特定组件
+    runs-on: windows-latest
 
     steps:
     # 1. 检出代码
@@ -23,7 +23,7 @@ jobs:
     - name: Restore Dependencies
       run: dotnet restore PCL.Shion.slnx
 
-    # 4. 强行发布 Windows 客户端 (忽略一切可能阻断流程的 Null 警告和测试)
+    # 4. 发布 Windows 客户端 (使用 --no-warn 参数隔离分号，防止 MSBuild 解析错误)
     - name: Publish Windows Client
       run: >
         dotnet publish PCL.Shion/PCL.Shion.csproj 
@@ -32,10 +32,10 @@ jobs:
         --self-contained true 
         -p:PublishSingleFile=true 
         -p:PublishTrimmed=false 
-        -p:NoWarn="CS8600;CS8602;CS8603;CS8604;CS8618;CS0108"
+        --no-warn CS8600,CS8602,CS8603,CS8604,CS8618,CS0108 
         -o ./dist/PCL_VEOSC_Windows
 
-    # 5. 强行发布 Linux 客户端
+    # 5. 发布 Linux 客户端
     - name: Publish Linux Client
       run: >
         dotnet publish PCL.Shion/PCL.Shion.csproj 
@@ -44,10 +44,10 @@ jobs:
         --self-contained true 
         -p:PublishSingleFile=true 
         -p:PublishTrimmed=false 
-        -p:NoWarn="CS8600;CS8602;CS8603;CS8604;CS8618;CS0108"
+        --no-warn CS8600,CS8602,CS8603,CS8604,CS8618,CS0108 
         -o ./dist/PCL_VEOSC_Linux
 
-    # 6. 确保将文件夹里的文件完整上传
+    # 6. 上传 Windows 构建产物
     - name: Upload Windows Artifact
       uses: actions/upload-artifact@v4
       with:
